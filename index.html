@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Mini RPG Battle with Levels</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#0f1724; --accent:#7dd3fc; --muted:#94a3b8;
+    --hp-good:#34d399; --hp-bad:#ef4444;
+  }
+  *{box-sizing:border-box;font-family:Inter,Segoe UI,system-ui,Arial;}
+  body{margin:0;background:linear-gradient(180deg,var(--bg),#071021 80%);
+       color:#e6eef8;display:flex;align-items:center;justify-content:center;
+       min-height:100vh;padding:20px;}
+  .game{width:920px;max-width:96vw;background:rgba(255,255,255,0.03);
+        border-radius:12px;padding:18px;box-shadow:0 10px 30px rgba(2,6,23,0.7);
+        display:grid;grid-template-columns:1fr 360px;gap:16px;}
+  .battlefield{background:rgba(255,255,255,0.02);border-radius:10px;padding:16px;
+               min-height:420px;position:relative;overflow:hidden;}
+  .arena{position:relative;height:360px;border-radius:8px;
+         background:linear-gradient(180deg,#07213a,#0b1b2b 60%);
+         display:flex;align-items:end;justify-content:space-between;padding:24px;}
+  .character{width:170px;text-align:center;position:relative;}
+  .sprite{width:130px;height:130px;margin:0 auto 8px;border-radius:12px;
+          display:flex;align-items:center;justify-content:center;font-weight:700;
+          font-size:28px;box-shadow:0 6px 18px rgba(2,6,23,0.6);}
+  .player .sprite{background:linear-gradient(180deg,#20365a,#0f3a5a);}
+  .enemy .sprite{background:linear-gradient(180deg,#5a2020,#5a0f24);}
+  .name{font-size:14px;color:var(--muted);margin-bottom:6px;}
+  .hpbar{height:14px;background:rgba(255,255,255,0.06);border-radius:10px;overflow:hidden;}
+  .hp{height:100%;width:100%;background:linear-gradient(90deg,var(--hp-good),#10b981);
+      transition:width .4s linear;}
+  .hp.low{background:linear-gradient(90deg,var(--hp-bad),#ef4444);}
+  .hud{background:rgba(255,255,255,0.02);border-radius:10px;padding:14px;
+       display:flex;flex-direction:column;gap:12px;}
+  .panel{background:var(--panel);border-radius:8px;padding:12px;}
+  .actions{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+  button.action{padding:12px 10px;border-radius:8px;border:0;background:#0e1726;
+                color:#dbeafe;cursor:pointer;font-weight:600;}
+  button.action:active{transform:translateY(2px);}button[disabled]{opacity:.4;}
+  .log{height:150px;overflow:auto;padding:8px;background:#06101a;border-radius:6px;
+       font-size:13px;color:var(--muted);}
+  .damage{position:absolute;font-weight:800;font-size:20px;color:#ffd8d8;
+          text-shadow:0 2px 6px rgba(0,0,0,0.6);animation:rise .9s ease-out forwards;}
+  @keyframes rise{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-70px)}}
+  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:60;}
+  .overlay .card{background:#081428;border-radius:12px;padding:18px 22px;text-align:center;}
+  .small-muted{color:var(--muted);font-size:13px;}
+  @media(max-width:760px){.game{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<div class="game" id="game">
+  <div class="battlefield">
+    <div class="arena" id="arena">
+      <div class="character player" id="playerChar">
+        <div class="sprite" id="playerSprite">YOU</div>
+        <div class="name big">Hero Lv.<span id="pLevel">1</span></div>
+        <div class="hpbar"><div class="hp" id="playerHP"></div></div>
+      </div>
+      <div class="character enemy" id="enemyChar">
+        <div class="sprite" id="enemySprite">ORC</div>
+        <div class="name big">Enemy Lv.<span id="eLevel">1</span></div>
+        <div class="hpbar"><div class="hp" id="enemyHP"></div></div>
+      </div>
+    </div>
+    <div style="margin-top:12px;">
+      <div class="panel" style="display:flex;gap:12px;justify-content:space-between;">
+        <div><div class="small-muted">Turn</div><div id="turnText">Player</div></div>
+        <div><div class="small-muted">Round</div><div id="roundNum">1</div></div>
+        <div><div class="small-muted">EXP</div><div id="expText">0 / 50</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hud">
+    <div class="panel">
+      <div class="small-muted" style="margin-bottom:8px;">Actions</div>
+      <div class="actions">
+        <button class="action" id="btnAttack">Attack</button>
+        <button class="action" id="btnMagic">Magic</button>
+        <button class="action" id="btnHeal">Heal</button>
+        <button class="action" id="btnDefend">Defend</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="small-muted">Battle Log</div>
+      <div class="log" id="log"></div>
+    </div>
+
+    <div class="panel" id="upgradePanel" style="display:none;">
+      <div class="small-muted">Upgrade Points: <span id="points">0</span></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+        <button class="action" id="upAtk">+ATK</button>
+        <button class="action" id="upMag">+MAG</button>
+        <button class="action" id="upHP">+HP</button>
+      </div>
+    </div>
+
+    <div class="panel center" style="margin-top:auto;text-align:center;">
+      <button class="action" id="btnRestart" style="background:linear-gradient(90deg,#7c3aed,#06b6d4);width:100%;">Restart</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const state={
+  player:{maxHP:120,hp:120,atk:18,mag:22,level:1,exp:0,points:0,def:false},
+  enemy:{maxHP:100,hp:100,atk:14,mag:16,level:1,def:false},
+  turn:'player',round:1,busy:false
+};
+const el={
+  pHP:playerHP,eHP:enemyHP,turn:turnText,round:roundNum,log:log,
+  exp:expText,pLevel:pLevel,eLevel:eLevel,points:points,upPanel:upgradePanel
+};
+function pct(x,max){return Math.max(0,Math.min(100,Math.round(x/max*100)))}
+function updateUI(){
+  el.pHP.style.width=pct(state.player.hp,state.player.maxHP)+'%';
+  el.eHP.style.width=pct(state.enemy.hp,state.enemy.maxHP)+'%';
+  el.turn.textContent=state.turn;
+  el.round.textContent=state.round;
+  el.pLevel.textContent=state.player.level;
+  el.eLevel.textContent=state.enemy.level;
+  el.exp.textContent=`${state.player.exp} / ${xpToNext()}`;
+  el.points.textContent=state.player.points;
+  el.upPanel.style.display=state.player.points>0?'block':'none';
+  [btnAttack,btnMagic,btnHeal,btnDefend].forEach(b=>b.disabled=state.turn!=='player'||state.busy);
+}
+function logMsg(t){const d=document.createElement('div');d.textContent=t;el.log.prepend(d)}
+function xpToNext(){return 50+20*(state.player.level-1)}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+async function playerAttack(magic=false){
+  if(state.busy)return;state.busy=true;updateUI();
+  const base=magic?state.player.mag:state.player.atk;
+  const dmg=Math.max(1,base+(Math.random()*6|0)-(state.enemy.def?5:0));
+  logMsg(`Player uses ${magic?'Magic':'Attack'} (${dmg})`);
+  state.enemy.hp=Math.max(0,state.enemy.hp-dmg);
+  checkEnd();await sleep(400);
+  state.enemy.def=false;nextTurn();state.busy=false;updateUI();
+}
+async function playerHeal(){
+  if(state.busy)return;state.busy=true;const h=15+(Math.random()*10|0);
+  state.player.hp=Math.min(state.player.maxHP,state.player.hp+h);
+  logMsg(`Player heals ${h} HP`);await sleep(300);
+  nextTurn();state.busy=false;updateUI();
+}
+function playerDefend(){state.player.def=true;logMsg("Player defends.");nextTurn();updateUI()}
+async function enemyAct(){
+  if(state.busy)return;state.busy=true;await sleep(600);
+  let c=Math.random();
+  let choice=c<0.5?'attack':c<0.8?'magic':'defend';
+  if(state.enemy.hp<state.enemy.maxHP*0.25&&Math.random()<0.6)choice='heal';
+  if(choice==='attack'||choice==='magic'){
+    const base=choice==='magic'?state.enemy.mag:state.enemy.atk;
+    const dmg=Math.max(1,base+(Math.random()*6|0)-(state.player.def?5:0));
+    state.player.hp=Math.max(0,state.player.hp-dmg);
+    logMsg(`Enemy uses ${choice} (${dmg})`);
+  }else if(choice==='defend'){state.enemy.def=true;logMsg("Enemy defends.");}
+  else{const h=10+(Math.random()*10|0);state.enemy.hp=Math.min(state.enemy.maxHP,state.enemy.hp+h);
+       logMsg(`Enemy heals ${h} HP`);}
+  state.player.def=false;checkEnd();state.round++;state.turn='player';state.busy=false;updateUI();
+}
+function nextTurn(){if(state.enemy.hp>0){state.turn='enemy';updateUI();setTimeout(enemyAct,600)}}
+function checkEnd(){
+  if(state.enemy.hp<=0){end('win')}else if(state.player.hp<=0){end('lose')}
+}
+function end(res){
+  state.busy=true;
+  const overlay=document.createElement('div');
+  overlay.className='overlay';
+  overlay.innerHTML=`<div class="card">
+     <h2>${res==='win'?'Victory!':'Defeat...'}</h2>
+     <p>${res==='win'?'You gain EXP!':'You were defeated.'}</p>
+     <button class="action" id="next">Continue</button>
+   </div>`;
+  document.getElementById('game').appendChild(overlay);
+  next.onclick=()=>{overlay.remove(); if(res==='win')gainXP(); else restart();}
+}
+function gainXP(){
+  const gain=30+10*state.enemy.level;
+  state.player.exp+=gain;
+  logMsg(`You gained ${gain} EXP!`);
+  while(state.player.exp>=xpToNext()){state.player.exp-=xpToNext();levelUp();}
+  newEnemy();state.turn='player';state.busy=false;state.round=1;updateUI();
+}
+function levelUp(){
+  state.player.level++;
+  state.player.points+=2;
+  state.player.maxHP+=10;state.player.hp=state.player.maxHP;
+  logMsg(`Level Up! Now Level ${state.player.level} (+2 Upgrade Points)`);
+}
+function newEnemy(){
+  const l=state.player.level;
+  state.enemy.level=l;
+  state.enemy.maxHP=100+20*l;state.enemy.hp=state.enemy.maxHP;
+  state.enemy.atk=14+3*l;state.enemy.mag=16+3*l;
+  state.enemy.def=false;
+  logMsg(`A Level ${l} enemy approaches!`);
+}
+function restart(){
+  state.player={maxHP:120,hp:120,atk:18,mag:22,level:1,exp:0,points:0,def:false};
+  newEnemy();state.enemy.level=1;
+  state.turn='player';state.round=1;state.busy=false;el.log.innerHTML='';
+  logMsg("New battle begins!");updateUI();
+}
+upAtk.onclick=()=>spend('atk',3);
+upMag.onclick=()=>spend('mag',3);
+upHP.onclick =()=>spend('maxHP',10);
+function spend(stat,inc){
+  if(state.player.points<=0)return;
+  state.player[stat]+=inc;
+  state.player.points--;
+  if(stat==='maxHP')state.player.hp=state.player.maxHP;
+  logMsg(`Upgraded ${stat}!`);
+  updateUI();
+}
+btnAttack.onclick=()=>playerAttack(false);
+btnMagic.onclick=()=>playerAttack(true);
+btnHeal.onclick=playerHeal;
+btnDefend.onclick=playerDefend;
+btnRestart.onclick=restart;
+restart();
+</script>
+</body>
+</html>
